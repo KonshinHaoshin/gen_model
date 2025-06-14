@@ -1,11 +1,92 @@
 ﻿import os
 import json
+from collections import defaultdict
 
 
 def sanitize_path(path):
     """去除路径两侧的引号，防止误识别"""
     return path.strip().strip('"')
 
+def remove_duplicates_and_check_files(model_json_path):
+    with open(model_json_path, "r", encoding="utf-8") as f:
+        model = json.load(f)
+
+    base_dir = os.path.dirname(model_json_path)
+
+    # 1️⃣ motions 去重并收集缺失文件
+    new_motions = defaultdict(list)
+    seen_motion_files = set()
+    missing_motion_entries = []  # [(motion_name, motion_obj)]
+
+    for motion_name, motion_list in model.get("motions", {}).items():
+        for motion in motion_list:
+            file_path = motion["file"]
+            abs_path = os.path.join(base_dir, file_path)
+            if file_path in seen_motion_files:
+                print(f"⚠️ 跳过重复 motion: {file_path}")
+                continue
+            if not os.path.isfile(abs_path):
+                missing_motion_entries.append((motion_name, motion))
+            else:
+                seen_motion_files.add(file_path)
+                new_motions[motion_name].append(motion)
+
+    # 2️⃣ expressions 去重并收集缺失文件
+    seen_expression_files = set()
+    new_expressions = []
+    missing_expressions = []
+
+    for expression in model.get("expressions", []):
+        file_path = expression["file"]
+        abs_path = os.path.join(base_dir, file_path)
+        if file_path in seen_expression_files:
+            print(f"⚠️ 跳过重复 expression: {file_path}")
+            continue
+        if not os.path.isfile(abs_path):
+            missing_expressions.append(expression)
+        else:
+            seen_expression_files.add(file_path)
+            new_expressions.append(expression)
+
+    # 3️⃣ 一次性提示用户是否删除所有缺失项
+    print("\n🧹 检测到缺失的动作和表情文件：")
+    print(f"  - 缺失动作文件数：{len(missing_motion_entries)}")
+    print(f"  - 缺失表情文件数：{len(missing_expressions)}")
+
+    if missing_motion_entries or missing_expressions:
+        confirm = input("是否删除以上所有丢失的动作/表情？(y/n): ").strip().lower()
+        if confirm == "y":
+            # 删除动作中缺失的部分
+            for motion_name, motion in missing_motion_entries:
+                print(f"🗑️ 删除 motion: {motion['file']}")
+            # 重新组织 motion（不能直接加回去）
+            new_motions_cleaned = defaultdict(list)
+            for motion_name, motion_list in new_motions.items():
+                new_motions_cleaned[motion_name].extend(motion_list)
+            model["motions"] = new_motions_cleaned
+
+            # 删除表情中缺失的部分
+            for expression in missing_expressions:
+                print(f"🗑️ 删除 expression: {expression['file']}")
+            model["expressions"] = new_expressions
+        else:
+            # 用户不删除：仍保留原来不缺失的部分
+            for motion_name, motion, in missing_motion_entries:
+                new_motions[motion_name].append(motion)
+            model["motions"] = new_motions
+            model["expressions"] = new_expressions + missing_expressions
+    else:
+        print("✅ 未发现缺失的动作或表情文件。")
+
+    # 保存备份并写入
+    backup_path = model_json_path + ".bak"
+    os.rename(model_json_path, backup_path)
+    print(f"📦 已备份原始文件为: {backup_path}")
+
+    with open(model_json_path, "w", encoding="utf-8") as f:
+        json.dump(model, f, ensure_ascii=False, indent=2)
+
+    print("✅ 去重、缺失检查与保存完成！")
 
 def scan_live2d_directory(directory):
     """遍历 Live2D 资源目录并生成 model.json"""
@@ -146,9 +227,10 @@ def main():
         print("1. 生成新的 model.json")
         print("2. 添加单个动作/表情到 model.json")
         print("3. 批量添加动作/表情到 model.json")
+        print("4. 去重 model.json 中重复的动作/表情,并删除不存在的动作和表情路径")
         print("5. 批量更改 mtn 文件中的 PARAM_IMPORT 参数")
         print("q. 退出程序")
-        choice = input("请选择操作 (1/2/3/5/q): ").strip()
+        choice = input("请选择操作 (1/2/3/4/5/q): ").strip()
 
         if choice == "1":
             directory = sanitize_path(input("请输入 Live2D 资源目录路径: "))
@@ -168,6 +250,23 @@ def main():
             new_files_or_dir = input("请输入包含多个动作/表情的目录路径或多个文件（用 ; 分隔）: ")
             prefix = input("请输入添加到动作/表情名称前的前缀（可留空）: ").strip()
             update_model_json_bulk(model_json_path, new_files_or_dir, prefix=prefix)
+
+
+        elif choice == "4":
+
+            from collections import defaultdict
+
+
+            path = input("请输入 model.json 的路径（例如 ./model3.json）：").strip().strip('"').strip("'")
+
+            if not os.path.isfile(path):
+
+                print("❌ 文件不存在，请检查路径是否正确。")
+
+            else:
+
+                remove_duplicates_and_check_files(path)
+
 
 
         elif choice == "5":
