@@ -79,9 +79,9 @@ def remove_duplicates_and_check_files(model_json_path):
         print("✅ 未发现缺失的动作或表情文件。")
 
     # 保存备份并写入
-    backup_path = model_json_path + ".bak"
-    os.rename(model_json_path, backup_path)
-    print(f"📦 已备份原始文件为: {backup_path}")
+    # backup_path = model_json_path + ".bak"
+    # os.rename(model_json_path, backup_path)
+    # print(f"📦 已备份原始文件为: {backup_path}")
 
     with open(model_json_path, "w", encoding="utf-8") as f:
         json.dump(model, f, ensure_ascii=False, indent=2)

@@ -88,7 +88,107 @@ your_model_folder/
 - 工具默认会对 `model.json` 进行 `.bak` 备份，放心修改。
 - 建议在模型制作后期使用本工具进行资源整理与批量修复。
 
----
+## 🎨 新功能：`color_transfer.py` — 图像色调匹配 & WebGAL 色调指令生成
+
+> 快速将一张图像的整体色调迁移为另一张图像的风格，并自动生成 WebGAL 使用的 `setTransform` 指令！
+
+------
+
+### 🔧 功能介绍
+
+- 对比源图与参考图的 RGB 色彩分布，自动生成“匹配风格”的新图像。
+- 自动构造 WebGAL 指令：根据参考图相对于源图的亮度差异，生成精确的 `colorRed` / `colorGreen` / `colorBlue` 参数。
+- 支持交互式选择图像，输出图像自动保存并可视化预览。
+
+------
+
+### 📦 使用方式
+
+1. 将源图像（需要调整风格）准备好；
+
+2. 将参考图像放入 `png/` 文件夹（支持多个 .png）；
+
+3. 运行安装依赖
+
+   ```bash
+   pip install pillow numpy matplotlib
+   ```
+
+4. 运行
+
+   ```bash
+   python color_transfer.py
+   ```
+
+5. 按照命令行提示操作：
+
+6. 程序将输出：
+
+   - 一张新的色调匹配图：保存在 `output/` 文件夹中；
+   - 一条 WebGAL 可用的 `setTransform` 指令，直接复制使用。
+
+### 📌 示例输出
+
+```bash
+✅ Color matching done. Saved to: output/matched_background_cool.png
+
+🎬 Suggested WebGAL Transform Command:
+setTransform:{"colorRed": 130, "colorGreen": 210, "colorBlue": 255} -target=bg-main -duration=0 -next;
+```
+
+### 🔄 数学原理：**标准化 + 分布转换**
+
+这一步是核心：
+
+1. 将源图的每个像素先标准化为 **零均值单位方差**
+
+   ```math
+   z=x−μsrcσsrcz = \frac{x - \mu_{\text{src}}}{\sigma_{\text{src}}}z=σsrcx−μsrc
+   ```
+
+   
+
+   
+
+2. 再重构为目标图的分布：
+
+   ```math
+   xnew=z⋅σtgt+μtgtx_{\text{new}} = z \cdot \sigma_{\text{tgt}} + \mu_{\text{tgt}}xnew=z⋅σtgt+μtgt
+   ```
+
+   
+
+这相当于将源图的色彩分布“平移+拉伸”为参考图的色彩分布。
+
+即对每个 RGB 通道：
+
+- 将源图像的亮度“拉平”为标准分布；
+- 然后再“拉回”成目标图的风格。
+
+ 🧠 WebGAL 色调分析：
+
+每个通道（R/G/B）默认值为 `255`，程序将根据参考图的相对亮度变化与源图进行对比，输出：
+
+```python
+colorX = 255 - (source_mean - target_mean)
+```
+
+并保证结果范围在 `[0, 255]`，自动向 WebGAL 样式靠拢。
+
+### ✅ 示例
+
+![1](readme/1.png)
+
+![2](readme/2.png)
+
+![3](readme/3.png)
+
+> ```webgal
+> changeBg:E（live house）/E6.png;
+> setTransform:{"colorRed": 139, "colorGreen": 174, "colorBlue": 204} -target=bg-main -duration=0 -next;
+> ```
+
+![4](readme/4.png)
 
 ## 📜 License
 
@@ -98,3 +198,8 @@ your_model_folder/
 
 如需自动化脚本、图形界面或与 Live2D Viewer 配套使用的功能，欢迎发起 Issue 或 PR！  
 有更多想法也欢迎联系我，我会持续维护和优化。
+
+
+
+
+
