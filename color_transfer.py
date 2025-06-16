@@ -3,6 +3,7 @@ from PIL import Image
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
+import json
 matplotlib.use('TkAgg')
 
 def match_color(source: Image.Image, target: Image.Image) -> Image.Image:
@@ -105,7 +106,7 @@ def main():
 
     # ✅ 输出 WebGAL 转换指令
     webgal_rgb = extract_webgal_rgb(source_img,target_img)
-    webgal_code = f'setTransform:{webgal_rgb} -target=bg-main -duration=0 -next;'
+    webgal_code = f'setTransform:{json.dumps(webgal_rgb)} -target=bg-main -duration=0 -next;'
     print("\n🎬 Suggested WebGAL Transform Command:")
     print(webgal_code)
 
