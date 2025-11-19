@@ -18,8 +18,8 @@ output_conf
 lut
 __pycache__
 
-# Python virtual environment
 .venv/
 venv/
 env/
 ENV/
+myenv/
