@@ -358,9 +358,38 @@ class OpacityPresetPage(QWidget):
         # 根据预设创建 init_opacities
         init_opacities = None
         if preset_name == "保持不变":
-            # 使用原始 JSON 中的 init_opacities（在预览窗口中会读取）
-            init_opacities = None
-            print("📌 使用原始 init_opacities")
+            # 从原始 JSON 中读取 init_opacities 并传递给预览窗口
+            # 确保包含所有部件，避免某些部件使用默认值（可能是 1.0）
+            try:
+                with open(model_json_path, "r", encoding="utf-8") as f:
+                    model_data = json.load(f)
+                original_opacities = model_data.get("init_opacities", [])
+                
+                # 获取所有部件
+                all_parts = get_all_parts(model_json_path)
+                
+                # 创建部件 ID 到值的映射
+                opacity_map = {item.get("id"): item.get("value", 0.0) for item in original_opacities if isinstance(item, dict) and "id" in item}
+                
+                # 确保所有部件都在 init_opacities 中
+                init_opacities = [
+                    {"id": pid, "value": opacity_map.get(pid, 0.0)}
+                    for pid in all_parts
+                ]
+                
+                if original_opacities:
+                    visible_count = sum(1 for item in init_opacities if item.get("value", 0.0) == 1.0)
+                    print(f"📌 使用原始 init_opacities: 共 {len(init_opacities)} 个部件，其中 {visible_count} 个可见（value=1.0）")
+                else:
+                    print(f"📌 原始 JSON 中没有 init_opacities，所有部件设为 0.0")
+            except Exception as e:
+                QMessageBox.warning(self, "警告", f"读取原始 init_opacities 失败：{e}")
+                # 如果读取失败，尝试获取所有部件并全部设为 0
+                try:
+                    all_parts = get_all_parts(model_json_path)
+                    init_opacities = [{"id": pid, "value": 0.0} for pid in all_parts]
+                except:
+                    init_opacities = []
         elif preset_name == "清空(全0)":
             # 获取所有部件，全部设为 0
             try:
@@ -446,14 +475,30 @@ class OpacityPresetPage(QWidget):
         # 根据预设创建当前的 init_opacities
         current_init_opacities = None
         if preset_name == "保持不变":
-            # 读取原始 JSON 中的 init_opacities
+            # 读取原始 JSON 中的 init_opacities，并确保包含所有部件
             try:
                 with open(model_json_path, "r", encoding="utf-8") as f:
                     model_data = json.load(f)
-                current_init_opacities = model_data.get("init_opacities", [])
+                original_opacities = model_data.get("init_opacities", [])
+                
+                # 获取所有部件
+                all_parts = get_all_parts(model_json_path)
+                
+                # 创建部件 ID 到值的映射
+                opacity_map = {item.get("id"): item.get("value", 0.0) for item in original_opacities if isinstance(item, dict) and "id" in item}
+                
+                # 确保所有部件都在 init_opacities 中
+                current_init_opacities = [
+                    {"id": pid, "value": opacity_map.get(pid, 0.0)}
+                    for pid in all_parts
+                ]
             except Exception as e:
                 QMessageBox.warning(self, "警告", f"读取原始 init_opacities 失败：{e}")
-                current_init_opacities = []
+                try:
+                    all_parts = get_all_parts(model_json_path)
+                    current_init_opacities = [{"id": pid, "value": 0.0} for pid in all_parts]
+                except:
+                    current_init_opacities = []
         elif preset_name == "清空(全0)":
             # 获取所有部件，全部设为 0
             try:
@@ -481,6 +526,45 @@ class OpacityPresetPage(QWidget):
             # 获取编辑后的 init_opacities
             new_init_opacities = dialog.get_init_opacities()
             
+            # 保存到 model.json 文件
+            try:
+                with open(model_json_path, "r", encoding="utf-8") as f:
+                    model_data = json.load(f)
+                
+                # 移除 motions 和 expressions（保持与 apply_preset 一致的行为）
+                model_data.pop("motions", None)
+                model_data.pop("expressions", None)
+                
+                # 更新 init_opacities
+                model_data["init_opacities"] = new_init_opacities
+                
+                # 写回文件
+                with open(model_json_path, "w", encoding="utf-8") as f:
+                    json.dump(model_data, f, ensure_ascii=False, indent=2)
+                
+                print(f"✅ 已保存透明度设置到文件: {model_json_path}")
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"保存透明度设置失败：{e}")
+                import traceback
+                traceback.print_exc()
+                return
+            
+            # 更新表格中该行的"检测到的预设"列
+            detected = self.detect_preset(model_json_path) or "无"
+            detected_item = self.json_table.item(row, 2)
+            if detected_item:
+                detected_item.setText(detected)
+            
+            # 如果编辑后的设置不匹配当前预设，将预设选择更新为检测到的预设或"自定义"
+            if detected in self.preset_names:
+                combo.setCurrentText(detected)
+            elif detected == "自定义":
+                # 如果检测到是自定义，保持当前选择不变（可能是"保持不变"或其他预设）
+                pass
+            else:
+                # 如果检测不到预设，保持当前选择不变
+                pass
+            
             # 如果预览窗口正在运行，更新它
             if self.preview_window and self.preview_thread and self.preview_thread.is_alive():
                 # 更新预览窗口的 init_opacities
@@ -507,7 +591,7 @@ class OpacityPresetPage(QWidget):
                 except Exception as e:
                     print(f"⚠️ 更新预览窗口透明度时出错: {e}")
             
-            QMessageBox.information(self, "完成", "已更新透明度设置！\n"
+            QMessageBox.information(self, "完成", "已保存透明度设置到文件！\n"
                                                    "如果预览窗口正在运行，已自动应用更改。")
     
     def set_main_window(self, main_window):
